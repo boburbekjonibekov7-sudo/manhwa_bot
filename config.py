@@ -16,15 +16,17 @@ class Config:
     EPISODES_PER_PAGE: int = 24
     ANIMES_PER_PAGE: int = 8
 
-    # Webhook settings
-    WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "default-secret-change-me")
+    # Webhook settings (built-in defaults, no env var needed)
+    WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "manhwa_webhook_2025")
     PORT: int = int(os.getenv("PORT", "8000"))
-    WEBHOOK_PATH: str = f"/webhook/{WEBHOOK_SECRET}"
+    WEBHOOK_PATH: str = ""
 
     def __post_init__(self):
         if self.ADMIN_IDS is None:
             self.ADMIN_IDS = [
                 int(x) for x in os.getenv("ADMIN_IDS", "8720175870").split(",")
             ]
+        # Set webhook path after secret is resolved
+        self.WEBHOOK_PATH = f"/webhook/{self.WEBHOOK_SECRET}"
 
 config = Config()
