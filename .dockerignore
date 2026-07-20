@@ -1,0 +1,11 @@
+__pycache__
+*.pyc
+*.pyo
+.git
+.github
+.gitignore
+*.log
+manhwa_bot.db
+.env
+.env.example
+README.md
