@@ -12,5 +12,5 @@ COPY . .
 # Make start script executable
 RUN chmod +x start.sh
 
-# Default command - Render will set PORT env var
+# Render will set PORT env var automatically
 CMD ["python", "main.py"]
