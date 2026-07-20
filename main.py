@@ -1,6 +1,8 @@
 # main.py
 import asyncio
 import logging
+import os
+import sys
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
@@ -65,13 +67,25 @@ async def on_startup(dispatcher: Dispatcher):
     except Exception as e:
         logger.warning(f"Webhook o'chirishda xatolik: {e}")
 
+    # Log the webhook URL for debugging
+    webhook_base = os.getenv("RENDER_EXTERNAL_URL", os.getenv("RENDER_SERVICE_URL", ""))
+    if webhook_base:
+        webhook_url = f"{webhook_base}{config.WEBHOOK_PATH}"
+        logger.info(f"🌐 Webhook URL: {webhook_url}")
+
     logger.info("🚀 Bot muvaffaqiyatli ishga tushdi (webhook rejimi)!")
 
 
 # ==================== MAIN ====================
 async def main():
+    # Validate token before creating bot
+    token = config.BOT_TOKEN
+    if not token or token == "TOKEN" or len(token) < 20:
+        logger.error("❌ BOT_TOKEN noto'g'ri yoki bo'sh! Render dashboard'da Environment Variables ga to'g'ri token qo'shing.")
+        sys.exit(1)
+
     bot = Bot(
-        token=config.BOT_TOKEN,
+        token=token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
 
@@ -105,6 +119,12 @@ async def main():
     # --- Webhook server setup ---
     app = web.Application()
 
+    # Health check endpoint
+    async def health_check(request):
+        return web.Response(text="OK")
+
+    app.router.add_get("/health", health_check)
+
     # Register webhook handler
     webhook_requests_handler = SimpleRequestHandler(
         dispatcher=dp,
@@ -120,6 +140,8 @@ async def main():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", config.PORT)
     await site.start()
+
+    logger.info(f"✅ Server ishga tushdi: http://0.0.0.0:{config.PORT}")
 
     # Keep server running
     try:
