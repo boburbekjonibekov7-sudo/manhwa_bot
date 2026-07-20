@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+*.log
+manhwa_bot.db
+.env
+.DS_Store
