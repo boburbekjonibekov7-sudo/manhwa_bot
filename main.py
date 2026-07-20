@@ -51,7 +51,7 @@ async def vip_checker():
 
 
 # ==================== STARTUP ====================
-async def on_startup(dispatcher: Dispatcher):
+async def on_startup(dispatcher: Dispatcher, bot: Bot):
     await init_db()
     logger.info("✅ Database initialized")
     await check_vip_expiry()
@@ -60,7 +60,6 @@ async def on_startup(dispatcher: Dispatcher):
     logger.info("✅ VIP checker task started")
 
     # Set webhook to Telegram
-    bot: Bot = dispatcher.bot
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         logger.info("🔄 Eski webhook o'chirildi")
@@ -112,7 +111,7 @@ async def main():
     dp.include_router(anime_router)          # Anime izlash, tomosha qilish
     dp.include_router(vip_router)            # VIP sotib olish, promokod
 
-    dp.startup.register(on_startup)
+    dp.startup.register(on_startup, bot=bot)
 
     logger.info("🚀 Web server ishga tushmoqda...")
 
