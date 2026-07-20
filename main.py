@@ -5,6 +5,8 @@ from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiohttp import web
 
 from config import config
 from database.db import init_db, check_vip_expiry
@@ -47,14 +49,23 @@ async def vip_checker():
 
 
 # ==================== STARTUP ====================
-async def on_startup(bot: Bot):
+async def on_startup(dispatcher: Dispatcher):
     await init_db()
     logger.info("✅ Database initialized")
     await check_vip_expiry()
     logger.info("✅ VIP expiry checked on startup")
     asyncio.create_task(vip_checker())
     logger.info("✅ VIP checker task started")
-    logger.info("🚀 Bot muvaffaqiyatli ishga tushdi!")
+
+    # Set webhook to Telegram
+    bot: Bot = dispatcher.bot
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        logger.info("🔄 Eski webhook o'chirildi")
+    except Exception as e:
+        logger.warning(f"Webhook o'chirishda xatolik: {e}")
+
+    logger.info("🚀 Bot muvaffaqiyatli ishga tushdi (webhook rejimi)!")
 
 
 # ==================== MAIN ====================
@@ -89,16 +100,35 @@ async def main():
 
     dp.startup.register(on_startup)
 
-    logger.info("🚀 Bot ishga tushmoqda...")
+    logger.info("🚀 Web server ishga tushmoqda...")
+
+    # --- Webhook server setup ---
+    app = web.Application()
+
+    # Register webhook handler
+    webhook_requests_handler = SimpleRequestHandler(
+        dispatcher=dp,
+        bot=bot,
+    )
+    webhook_requests_handler.register(app, path=config.WEBHOOK_PATH)
+
+    # Setup application lifecycle
+    setup_application(app, dp, bot=bot)
+
+    # Start server
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", config.PORT)
+    await site.start()
+
+    # Keep server running
     try:
-        await dp.start_polling(
-            bot,
-            allowed_updates=dp.resolve_used_update_types(),
-            drop_pending_updates=True
-        )
+        await asyncio.Event().wait()
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Bot to'xtatildi.")
     finally:
         await bot.session.close()
-        logger.info("Bot to'xtatildi.")
+        await runner.cleanup()
 
 
 if __name__ == "__main__":
