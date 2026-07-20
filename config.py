@@ -16,6 +16,11 @@ class Config:
     EPISODES_PER_PAGE: int = 24
     ANIMES_PER_PAGE: int = 8
 
+    # Webhook settings
+    WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "default-secret-change-me")
+    PORT: int = int(os.getenv("PORT", "8000"))
+    WEBHOOK_PATH: str = f"/webhook/{WEBHOOK_SECRET}"
+
     def __post_init__(self):
         if self.ADMIN_IDS is None:
             self.ADMIN_IDS = [
