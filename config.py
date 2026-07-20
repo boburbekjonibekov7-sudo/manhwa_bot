@@ -19,7 +19,7 @@ class Config:
     def __post_init__(self):
         if self.ADMIN_IDS is None:
             self.ADMIN_IDS = [
-                int(x) for x in os.getenv("ADMIN_IDS", "7538793043").split(",")
+                int(x) for x in os.getenv("ADMIN_IDS", "8720175870").split(",")
             ]
 
 config = Config()
