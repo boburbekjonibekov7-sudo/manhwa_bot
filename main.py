@@ -1,4 +1,4 @@
-# main.py
+# main.py (TO'LIQ WEBHOOK REJIMI)
 import asyncio
 import logging
 import os
@@ -14,7 +14,7 @@ from config import config
 from database.db import init_db, check_vip_expiry
 from middlewares.middlewares import ThrottlingMiddleware, UserMiddleware, VipCheckMiddleware
 
-# ==================== ROUTERS ====================
+# Routers
 from admin.panel import router as admin_panel_router
 from admin.channels import router as channels_router
 from admin.anime_upload import router as anime_upload_router
@@ -26,131 +26,91 @@ from user.start import router as start_router
 from user.anime import router as anime_router
 from user.vip import router as vip_router
 
-# ==================== LOGGING ====================
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler("bot.log", encoding="utf-8"),
-        logging.StreamHandler()
-    ]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-
-# ==================== VIP CHECKER ====================
 async def vip_checker():
-    """Har 30 daqiqada VIP muddati tugagan userlarni tozalash"""
     while True:
         await asyncio.sleep(1800)
         try:
             await check_vip_expiry()
-            logger.info("VIP expiry check completed")
         except Exception as e:
             logger.error(f"VIP checker xatolik: {e}")
 
-
-# ==================== STARTUP ====================
-async def on_startup(dispatcher: Dispatcher, bot: Bot):
+async def on_startup(bot: Bot):
     await init_db()
-    logger.info("✅ Database initialized")
     await check_vip_expiry()
-    logger.info("✅ VIP expiry checked on startup")
     asyncio.create_task(vip_checker())
-    logger.info("✅ VIP checker task started")
 
-    # Set webhook to Telegram
-    try:
-        await bot.delete_webhook(drop_pending_updates=True)
-        logger.info("🔄 Eski webhook o'chirildi")
-    except Exception as e:
-        logger.warning(f"Webhook o'chirishda xatolik: {e}")
+    # Webhook URL yaratish va Telegram'ga o'rnatish
+    base_url = os.getenv("RENDER_EXTERNAL_URL")
+    if base_url:
+        webhook_url = f"{base_url.rstrip('/')}{config.WEBHOOK_PATH}"
+        await bot.set_webhook(url=webhook_url, drop_pending_updates=True)
+        logger.info(f"🌐 Telegram Webhook muvaffaqiyatli o'rnatildi: {webhook_url}")
+    else:
+        logger.error("❌ RENDER_EXTERNAL_URL topilmadi! Render Environment Variables-ga o'z domeningizni qo'shing.")
 
-    # Log the webhook URL for debugging
-    webhook_base = os.getenv("RENDER_EXTERNAL_URL", os.getenv("RENDER_SERVICE_URL", ""))
-    if webhook_base:
-        webhook_url = f"{webhook_base}{config.WEBHOOK_PATH}"
-        logger.info(f"🌐 Webhook URL: {webhook_url}")
-
-    logger.info("🚀 Bot muvaffaqiyatli ishga tushdi (webhook rejimi)!")
-
-
-# ==================== MAIN ====================
 async def main():
-    # Validate token before creating bot
     token = config.BOT_TOKEN
     if not token or token == "TOKEN" or len(token) < 20:
-        logger.error("❌ BOT_TOKEN noto'g'ri yoki bo'sh! Render dashboard'da Environment Variables ga to'g'ri token qo'shing.")
+        logger.error("❌ BOT_TOKEN noto'g'ri!")
         sys.exit(1)
 
-    bot = Bot(
-        token=token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-    )
+    bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    dp = Dispatcher(storage=MemoryStorage())
 
-    storage = MemoryStorage()
-    dp = Dispatcher(storage=storage)
-
-    # --- Middlewares (tartib muhim: Throttling → User → VipCheck) ---
+    # Middlewares & Routers
     dp.message.middleware(ThrottlingMiddleware(rate_limit=config.RATE_LIMIT))
     dp.callback_query.middleware(ThrottlingMiddleware(rate_limit=0.3))
     dp.message.middleware(UserMiddleware())
     dp.callback_query.middleware(UserMiddleware())
     dp.message.middleware(VipCheckMiddleware())
 
-    # --- Routers (admin avval — F.text == ... konfliktini hal qilish uchun) ---
-    dp.include_router(admin_panel_router)    # /admin command, admin_panel callback
-    dp.include_router(channels_router)       # Kanal boshqaruvi
-    dp.include_router(anime_upload_router)   # Anime yuklash
-    dp.include_router(anime_edit_router)     # Kodlar paneli, anime tahrirlash
-    dp.include_router(broadcast_router)      # Xabar yuborish, post qilish
-    dp.include_router(bot_panel_router)      # Bot paneli, VIP, adminlar, statistika
-    dp.include_router(guide_router)          # Qo'llanma, kodlar ro'yxati
-    # User routerlar oxirida
-    dp.include_router(start_router)          # /start, asosiy menyu
-    dp.include_router(anime_router)          # Anime izlash, tomosha qilish
-    dp.include_router(vip_router)            # VIP sotib olish, promokod
+    dp.include_router(admin_panel_router)
+    dp.include_router(channels_router)
+    dp.include_router(anime_upload_router)
+    dp.include_router(anime_edit_router)
+    dp.include_router(broadcast_router)
+    dp.include_router(bot_panel_router)
+    dp.include_router(guide_router)
+    dp.include_router(start_router)
+    dp.include_router(anime_router)
+    dp.include_router(vip_router)
 
-    dp.startup.register(on_startup, bot=bot)
-
-    logger.info("🚀 Web server ishga tushmoqda...")
-
-    # --- Webhook server setup ---
     app = web.Application()
 
-    # Health check endpoint
+    # Health check (Render port scan uchun)
     async def health_check(request):
         return web.Response(text="OK")
 
+    app.router.add_get("/", health_check)
     app.router.add_get("/health", health_check)
 
-    # Register webhook handler
-    webhook_requests_handler = SimpleRequestHandler(
-        dispatcher=dp,
-        bot=bot,
-    )
-    webhook_requests_handler.register(app, path=config.WEBHOOK_PATH)
-
-    # Setup application lifecycle
+    # Webhook handler
+    webhook_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
+    webhook_handler.register(app, path=config.WEBHOOK_PATH)
     setup_application(app, dp, bot=bot)
 
-    # Start server
+    # Startup hodisasini ulash
+    dp.startup.register(on_startup)
+
+    # Serverni ishga tushirish
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", config.PORT)
     await site.start()
 
-    logger.info(f"✅ Server ishga tushdi: http://0.0.0.0:{config.PORT}")
+    logger.info(f"✅ Web server 0.0.0.0:{config.PORT} portida ishlamoqda")
 
-    # Keep server running
     try:
         await asyncio.Event().wait()
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Bot to'xtatildi.")
     finally:
         await bot.session.close()
         await runner.cleanup()
-
 
 if __name__ == "__main__":
     asyncio.run(main())
