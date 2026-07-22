@@ -64,6 +64,16 @@ def main_channels_kb() -> InlineKeyboardMarkup:
     b.adjust(1)
     return b.as_markup()
 
+# ==================== ODDIY HAVOLA KANALLAR ====================
+def url_channels_kb() -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text="➕ Oddiy havola qo'shish", callback_data="url_ch_add")
+    b.button(text="📋 Ro'yxatni ko'rish", callback_data="url_ch_list")
+    b.button(text="🗑 Havolani o'chirish", callback_data="url_ch_list")
+    b.button(text="🔙 Kanal boshqaruvi", callback_data="admin_channels")
+    b.adjust(1)
+    return b.as_markup()
+
 def channel_type_kb() -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.button(text="📢 Ommaviy / Shaxsiy (Kanal · Guruh)", callback_data="ch_type:public")
