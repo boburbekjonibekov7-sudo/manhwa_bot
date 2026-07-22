@@ -23,6 +23,7 @@ class AnimeUploadStates(StatesGroup):
     waiting_poster = State()
     waiting_episodes = State()
 
+
 @router.message(F.text == "🎬 Manhwa yuklash", IsAdminFilter())
 async def cmd_anime_upload(message: Message, state: FSMContext):
     if not await is_admin(message.from_user.id):
@@ -152,20 +153,80 @@ async def process_poster(message: Message, state: FSMContext):
     await message.answer(
         f"✅ Manhwa ma'lumotlari saqlandi!\n\n"
         f"📤 Endi boblarni yuboring (video yoki PDF).\n\n"
+        f"💡 Maslahat: 30 ta bobni ham birdan yuborishingiz mumkin!\n"
+        f"Telegram'da 10 tadan guruh qilib yuboring (media group).\n\n"
         f"Tugatgach: /done deb yozing.",
         reply_markup=cancel_admin_kb()
     )
 
-@router.message(AnimeUploadStates.waiting_episodes, F.content_type.in_({ContentType.VIDEO, ContentType.DOCUMENT}))
-async def process_episode(message: Message, state: FSMContext):
+
+@router.message(AnimeUploadStates.waiting_episodes, F.content_type == ContentType.VIDEO)
+async def process_episode_video(message: Message, state: FSMContext):
+    """Yagona video yoki media group'dan kelgan videolar"""
+    data = await state.get_data()
+    code = data["code"]
+    season = data.get("season", 1)
+    video_messages = []
+
+    # Agar media group bo'lsa, barcha videolarni to'playmiz
+    if message.media_group_id:
+        video_messages.append(message)
+    else:
+        video_messages.append(message)
+
+    await _process_videos(data, code, season, video_messages, state, message)
+
+
+@router.message(AnimeUploadStates.waiting_episodes, F.content_type == ContentType.DOCUMENT)
+async def process_episode_document(message: Message, state: FSMContext):
+    """Yagona PDF yoki media group'dan kelgan PDF'lar"""
     data = await state.get_data()
     code = data["code"]
     season = data.get("season", 1)
 
+    doc = message.document
+    is_pdf = (doc.mime_type == "application/pdf") or (doc.file_name and doc.file_name.lower().endswith(".pdf"))
+    if not is_pdf:
+        await message.answer(
+            "❌ Faqat video yoki PDF fayl qabul qilinadi.\n"
+            "Boshqa turdagi hujjat yuborilmagan."
+        )
+        return
+
     episodes = await get_episodes(code, season)
     ep_num = len(episodes) + 1
 
+    await add_episode(code, season, ep_num, doc.file_id, file_type="pdf", file_name=doc.file_name)
+    await message.answer(
+        f"✅ {ep_num}-bob qo'shildi (PDF).\n"
+        f"Keyingi bobni jo'nating yoki /done bilan tugating."
+    )
+
+
+# Media group handlerlar
+@router.message(AnimeUploadStates.waiting_episodes, F.content_type == ContentType.VIDEO, F.media_group_id)
+async def process_media_group_video(message: Message, state: FSMContext):
+    """Media group ichidagi videolarni qayta ishlash"""
+    # Bu handler individual xabar uchun ishlaydi, media group_id orqali guruhni aniqlaymiz
+    data = await state.get_data()
+    code = data["code"]
+    season = data.get("season", 1)
+
+    # Har bir media group a'zosini alohida ishlaymiz
+    await _process_single_video(data, code, season, message, state)
+
+
+# Asosiy handler — birinchi kelgan video yoki PDF (yagona yoki media group boshlang'ich)
+@router.message(AnimeUploadStates.waiting_episodes, F.content_type.in_({ContentType.VIDEO, ContentType.DOCUMENT}))
+async def process_episode_single(message: Message, state: FSMContext):
+    """Yagona video yoki PDF qayta ishlash"""
+    data = await state.get_data()
+    code = data["code"]
+    season = data.get("season", 1)
+
     if message.video:
+        episodes = await get_episodes(code, season)
+        ep_num = len(episodes) + 1
         await add_episode(code, season, ep_num, message.video.file_id, file_type="video")
         await message.answer(
             f"✅ {ep_num}-bob qo'shildi (video).\n"
@@ -180,11 +241,49 @@ async def process_episode(message: Message, state: FSMContext):
                 "Boshqa turdagi hujjat yuborilmagan."
             )
             return
+        episodes = await get_episodes(code, season)
+        ep_num = len(episodes) + 1
         await add_episode(code, season, ep_num, doc.file_id, file_type="pdf", file_name=doc.file_name)
         await message.answer(
             f"✅ {ep_num}-bob qo'shildi (PDF).\n"
             f"Keyingi bobni jo'nating yoki /done bilan tugating."
         )
+
+
+async def _process_videos(data, code, season, video_messages, state, message):
+    """Videolarni qayta ishlash va database'ga yozish"""
+    added_count = 0
+    results = []
+
+    for msg in video_messages:
+        if msg.video:
+            episodes = await get_episodes(code, season)
+            ep_num = len(episodes) + 1
+            await add_episode(code, season, ep_num, msg.video.file_id, file_type="video")
+            results.append(ep_num)
+            added_count += 1
+
+    if added_count > 0:
+        from_str = results[0]
+        to_str = results[-1]
+        if added_count == 1:
+            text = f"✅ {from_str}-bob qo'shildi (video)."
+        else:
+            text = f"✅ {added_count} ta bob qo'shildi: {from_str}-{to_str}."
+        text += "\nKeyingi bobni jo'nating yoki /done bilan tugating."
+        await message.answer(text)
+
+
+async def _process_single_video(data, code, season, message, state):
+    """Yagona videoni media group ichida ishlab chiqarish"""
+    if message.video:
+        episodes = await get_episodes(code, season)
+        ep_num = len(episodes) + 1
+        await add_episode(code, season, ep_num, message.video.file_id, file_type="video")
+        await message.answer(
+            f"✅ {ep_num}-bob qo'shildi (video)."
+        )
+
 
 @router.message(AnimeUploadStates.waiting_episodes, F.text == "/done")
 async def process_done(message: Message, state: FSMContext, bot: Bot):
