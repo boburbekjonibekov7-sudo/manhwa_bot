@@ -398,6 +398,93 @@ async def cb_ch_del_do(call: CallbackQuery):
     )
 
 
+# ==================== ODDIY HAVOLA KANALLAR ====================
+@router.callback_query(F.data == "ch_url")
+async def cb_ch_url(call: CallbackQuery):
+    """Oddiy havola kanallar boshqaruvi"""
+    try:
+        await call.message.edit_text("🌐 Oddiy havola kanallar:", reply_markup=url_channels_kb())
+    except:
+        await call.message.answer("🌐 Oddiy havola kanallar:", reply_markup=url_channels_kb())
+
+@router.callback_query(F.data == "url_ch_add")
+async def cb_url_ch_add(call: CallbackQuery, state: FSMContext):
+    """Oddiy havola qo'shish"""
+    await state.set_state(ChannelStates.waiting_url)
+    await call.message.edit_text(
+        "🔗 Oddiy havolani kiriting:\n\n"
+        "Masalan: https://site.com yoki https://t.me/kanal\n\n"
+        "Iltimos, to'g'ri formatda yuboring.",
+        reply_markup=back_cancel_admin_kb("ch_url")
+    )
+
+@router.message(ChannelStates.waiting_url)
+async def process_ch_url(message: Message, state: FSMContext):
+    url = message.text.strip()
+    if not url.startswith("http"):
+        await message.answer("❌ To'g'ri URL kiriting. (https://...)", reply_markup=cancel_admin_kb())
+        return
+    await add_channel(url, url, url, "url", url)
+    await state.clear()
+    await message.answer(
+        f"✅ Havola qo'shildi!\n🔗 {url}",
+        reply_markup=back_admin_kb("ch_url")
+    )
+
+@router.callback_query(F.data == "url_ch_list")
+async def cb_url_ch_list(call: CallbackQuery):
+    """Oddiy havola kanallar ro'yxati"""
+    channels = await get_channels()
+    url_chs = [ch for ch in channels if ch.get("channel_type") == "url"]
+    if not url_chs:
+        await call.message.edit_text(
+            "📋 Oddiy havola kanallar bo'sh.",
+            reply_markup=back_admin_kb("ch_url")
+        )
+        return
+    text = "🌐 Oddiy havola kanallar ro'yxati:\n\n"
+    for i, ch in enumerate(url_chs, 1):
+        display = ch.get("channel_username") or ch.get("channel_url") or ch.get("channel_name")
+        text += f"{i}. {display}\n"
+    text += f"\nJami: {len(url_chs)} ta havola"
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    b = InlineKeyboardBuilder()
+    for i, ch in enumerate(url_chs, 1):
+        b.button(text=f"🗑 {i}", callback_data=f"url_del_confirm:{ch['id']}")
+    b.button(text="🔙 Orqaga", callback_data="ch_url")
+    b.adjust(5)
+    await call.message.edit_text(text, reply_markup=b.as_markup())
+
+@router.callback_query(F.data.startswith("url_del_confirm:"))
+async def cb_url_del_confirm(call: CallbackQuery):
+    """O'chirish tasdiqlash"""
+    ch_db_id = int(call.data.split(":")[1])
+    channels = await get_channels()
+    ch = next((c for c in channels if c["id"] == ch_db_id), None)
+    if not ch:
+        await call.answer("❌ Topilmadi!", show_alert=True)
+        return
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    b = InlineKeyboardBuilder()
+    b.button(text="✅ Ha, o'chirish", callback_data=f"url_del_do:{ch['channel_id']}")
+    b.button(text="❌ Yo'q", callback_data="url_ch_list")
+    b.adjust(2)
+    await call.message.edit_text(
+        f"❓ O'chirishni tasdiqlaysizmi?\n{ch.get('channel_name') or ch.get('channel_username') or ch.get('channel_url')}",
+        reply_markup=b.as_markup()
+    )
+
+@router.callback_query(F.data.startswith("url_del_do:"))
+async def cb_url_del_do(call: CallbackQuery):
+    """O'chirishni bajarish"""
+    ch_id = call.data.split(":")[1]
+    await delete_channel(ch_id)
+    await call.message.edit_text(
+        "✅ Havola o'chirildi!",
+        reply_markup=back_admin_kb("ch_url")
+    )
+
+
 # ==================== ASOSIY KANALLAR ====================
 @router.callback_query(F.data == "main_ch_add")
 async def cb_main_ch_add(call: CallbackQuery, state: FSMContext):
