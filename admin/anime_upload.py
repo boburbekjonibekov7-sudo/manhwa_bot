@@ -23,20 +23,12 @@ class AnimeUploadStates(StatesGroup):
     waiting_poster = State()
     waiting_episodes = State()
 
-# Media group tracking: {media_group_id: [list of messages]}
-_media_groups: dict = {}
-# Track which media groups we already processed
-_processed_groups: set = set()
-
 
 @router.message(F.text == "🎬 Manhwa yuklash", IsAdminFilter())
 async def cmd_anime_upload(message: Message, state: FSMContext):
     if not await is_admin(message.from_user.id):
         return
     await state.clear()
-    # Clear media group cache when starting new upload
-    _media_groups.clear()
-    _processed_groups.clear()
 
     auto_code = await get_setting("auto_code") or "1"
     if auto_code == "1":
@@ -173,8 +165,6 @@ async def process_done(message: Message, state: FSMContext, bot: Bot):
     episodes = await get_episodes(code)
 
     await state.clear()
-    _media_groups.clear()
-    _processed_groups.clear()
 
     text = (
         f"✅ Manhwa saqlandi!\n"
@@ -204,91 +194,58 @@ async def process_done(message: Message, state: FSMContext, bot: Bot):
             await message.answer(f"📢 Auto post: {sent} ta kanalga yuborildi.")
 
 
-@router.message(AnimeUploadStates.waiting_episodes, F.media_group_id)
-async def process_media_group(message: Message, state: FSMContext, bot: Bot):
-    """Media group ni qayta ishlash — barcha fayllarni yig'ib, tartib bilan saqlash"""
-    group_id = message.media_group_id
-    if group_id in _processed_groups:
-        return  # Already processed this group
-
-    # Collect all messages for this group
-    if group_id not in _media_groups:
-        _media_groups[group_id] = []
-
-    _media_groups[group_id].append(message)
-
-    # Determine expected count from Telegram
-    # Telegram sends media group messages with the same media_group_id
-    # We need to process them all at once after a short delay
-
-    # Check if this is the last message in the group
-    # Use a simple heuristic: if message is not the first, check group
-    # Actually, we process the group when we receive messages with the same group_id
-    # We'll use a timer approach: wait 2 seconds after first message, then process
-
-    # Mark as processed immediately to avoid re-processing
-    _processed_groups.add(group_id)
-
-    # Get all messages in this group
-    group_messages = _media_groups.get(group_id, [])
-
-    # Process each message in the group
-    data = await state.get_data()
-    code = data["code"]
-    season = data.get("season", 1)
-
-    for msg in group_messages:
-        await _save_episode(code, season, msg)
-
-    # Clean up
-    if group_id in _media_groups:
-        del _media_groups[group_id]
-
-
-@router.message(AnimeUploadStates.waiting_episodes, F.video)
-async def process_video_episode(message: Message, state: FSMContext):
-    """Alohida video faylni qabul qilish (media group emas)"""
-    data = await state.get_data()
-    code = data["code"]
-    season = data.get("season", 1)
-
-    await _save_episode(code, season, message)
-
-
-@router.message(AnimeUploadStates.waiting_episodes, F.document)
-async def process_document_episode(message: Message, state: FSMContext):
-    """Alohida PDF faylni qabul qilish (media group emas)"""
-    data = await state.get_data()
-    code = data["code"]
-    season = data.get("season", 1)
-
-    doc = message.document
-    is_pdf = (doc.mime_type == "application/pdf") or (doc.file_name and doc.file_name.lower().endswith(".pdf"))
-    if not is_pdf:
-        await message.answer(
-            "❌ Faqat video yoki PDF fayl qabul qilinadi.\n"
-            "Boshqa turdagi hujjat yuborilmagan."
-        )
-        return
-
-    await _save_episode(code, season, message)
-
-
-async def _save_episode(code: int, season: int, message: Message):
+async def _save_episode(code: int, season: int, message: Message, bot: Bot):
     """Video yoki PDF faylni episode sifatida saqlash"""
-    episodes = await get_episodes(code, season)
-    ep_num = len(episodes) + 1
+    file_type = None
+    file_id = None
+    file_name = None
 
     if message.video:
-        await add_episode(code, season, ep_num, message.video.file_id, file_type="video")
-        await message.answer(f"✅ {ep_num}-bob qo'shildi (video).")
+        file_type = "video"
+        file_id = message.video.file_id
     elif message.document:
         doc = message.document
         is_pdf = (doc.mime_type == "application/pdf") or (doc.file_name and doc.file_name.lower().endswith(".pdf"))
         if not is_pdf:
-            return  # Skip non-PDF in media group silently
-        await add_episode(code, season, ep_num, doc.file_id, file_type="pdf", file_name=doc.file_name)
-        await message.answer(f"✅ {ep_num}-bob qo'shildi (PDF).")
+            return  # Skip non-PDF silently
+        file_type = "pdf"
+        file_id = doc.file_id
+        file_name = doc.file_name
+    else:
+        return  # Skip unknown type
+
+    # Episode raqamini aniqlash
+    episodes = await get_episodes(code, season)
+    ep_num = len(episodes) + 1
+
+    # Database'ga saqlash
+    await add_episode(code, season, ep_num, file_id, file_type=file_type, file_name=file_name)
+
+    # Javob berish — faqat media group bo'lmagan yoki oxirgi fayl uchun
+    type_label = "video" if file_type == "video" else "PDF"
+    await message.answer(f"✅ {ep_num}-bob qo'shildi ({type_label}).")
+
+
+@router.message(AnimeUploadStates.waiting_episodes, F.video | F.document)
+async def process_episode(message: Message, state: FSMContext, bot: Bot):
+    """Har qanday video yoki PDF faylni qabul qilish — cheklovsiz, ketma-ket yoki media group"""
+    data = await state.get_data()
+    code = data["code"]
+    season = data.get("season", 1)
+
+    # Document bo'lsa, PDF ekanini tekshirish
+    if message.document:
+        doc = message.document
+        is_pdf = (doc.mime_type == "application/pdf") or (doc.file_name and doc.file_name.lower().endswith(".pdf"))
+        if not is_pdf:
+            # PDF emas — xato xabari
+            await message.answer(
+                "❌ Faqat video yoki PDF fayl qabul qilinadi.\n"
+                "Boshqa turdagi hujjat yuborilmagan."
+            )
+            return
+
+    await _save_episode(code, season, message, bot)
 
 
 async def send_anime_post(bot, channel: dict, anime: dict, episodes: list):
