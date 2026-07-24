@@ -46,7 +46,7 @@ async def on_startup(bot: Bot):
     asyncio.create_task(vip_checker())
 
     # Webhook URL yaratish va Telegram'ga o'rnatish
-    base_url = os.getenv("RENDER_EXTERNAL_URL")
+    base_url = os.getenv("BASE_URL") or os.getenv("RENDER_EXTERNAL_URL")
     if base_url:
         webhook_url = f"{base_url.rstrip('/')}{config.WEBHOOK_PATH}"
         await bot.set_webhook(url=webhook_url, drop_pending_updates=True)
