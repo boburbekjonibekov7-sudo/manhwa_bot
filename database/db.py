@@ -619,6 +619,12 @@ async def delete_channel(channel_id: str):
         await db.execute("DELETE FROM channels WHERE channel_id=?", (channel_id,))
         await db.commit()
 
+async def delete_channel_by_id(ch_db_id: int):
+    """Primar key id orqali kanal o'chirish (URL kanallar uchun)"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM channels WHERE id=?", (ch_db_id,))
+        await db.commit()
+
 # ==================== VIP CARDS ====================
 async def get_vip_cards() -> List[Dict]:
     async with aiosqlite.connect(DB_PATH) as db:
