@@ -51,6 +51,7 @@ def required_channels_kb() -> InlineKeyboardMarkup:
     b.button(text="➕ Kanal qo'shish", callback_data="ch_add")
     b.button(text="📋 Ro'yxatni ko'rish", callback_data="ch_list")
     b.button(text="🗑 Kanalni o'chirish", callback_data="ch_delete")
+    b.button(text="🌐 Oddiy havola kanallar", callback_data="ch_url")
     b.button(text="🔙 Kanal boshqaruvi", callback_data="admin_channels")
     b.adjust(1)
     return b.as_markup()
