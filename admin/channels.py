@@ -457,7 +457,7 @@ async def cb_url_ch_list(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("url_del_confirm:"))
 async def cb_url_del_confirm(call: CallbackQuery):
-    """O'chirish tasdiqlash"""
+    """O'chirish tasdiqlash — id (primar key) orqali o'chiramiz"""
     ch_db_id = int(call.data.split(":")[1])
     channels = await get_channels()
     ch = next((c for c in channels if c["id"] == ch_db_id), None)
@@ -466,7 +466,7 @@ async def cb_url_del_confirm(call: CallbackQuery):
         return
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     b = InlineKeyboardBuilder()
-    b.button(text="✅ Ha, o'chirish", callback_data=f"url_del_do:{ch['channel_id']}")
+    b.button(text="✅ Ha, o'chirish", callback_data=f"url_del_do:{ch_db_id}")
     b.button(text="❌ Yo'q", callback_data="url_ch_list")
     b.adjust(2)
     await call.message.edit_text(
@@ -476,9 +476,10 @@ async def cb_url_del_confirm(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("url_del_do:"))
 async def cb_url_del_do(call: CallbackQuery):
-    """O'chirishni bajarish"""
-    ch_id = call.data.split(":")[1]
-    await delete_channel(ch_id)
+    """O'chirishni bajarish — id (primar key) orqali"""
+    ch_db_id = int(call.data.split(":")[1])
+    from database.db import delete_channel_by_id
+    await delete_channel_by_id(ch_db_id)
     await call.message.edit_text(
         "✅ Havola o'chirildi!",
         reply_markup=back_admin_kb("ch_url")
