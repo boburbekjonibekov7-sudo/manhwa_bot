@@ -3,9 +3,9 @@ from aiogram import Bot, Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from database.db import get_channels, add_channel, delete_channel, is_admin
+from database.db import get_channels, add_channel, delete_channel, delete_channel_by_id, is_admin
 from keyboards.admin_kb import (
-    channels_menu_kb, required_channels_kb, main_channels_kb,
+    channels_menu_kb, required_channels_kb, main_channels_kb, url_channels_kb,
     channel_type_kb, channel_add_method_kb,
     back_admin_kb, cancel_admin_kb, back_cancel_admin_kb
 )
@@ -181,7 +181,6 @@ async def process_ch_link(message: Message, state: FSMContext, bot: Bot):
         chat = await bot.get_chat(username)
         uname = f"@{chat.username}" if chat.username else username
         is_main_val = 1 if ch_type == "main" else 0
-        # public ham "public" tipida saqlanadi
         ch_db_type = "public"
         await add_channel(str(chat.id), uname, chat.title, ch_db_type)
         if is_main_val:
@@ -316,14 +315,14 @@ async def process_ch_url(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
         f"✅ Havola qo'shildi!\n🔗 {url}",
-        reply_markup=back_admin_kb("ch_required")
+        reply_markup=back_admin_kb("ch_url")
     )
 
-# ==================== RO'YXAT ====================
+# ==================== RO'YXAT (majburiy obuna — public/private) ====================
 @router.callback_query(F.data == "ch_list")
 async def cb_ch_list(call: CallbackQuery):
     channels = await get_channels()
-    req_chs = [ch for ch in channels if not ch.get("is_main")]
+    req_chs = [ch for ch in channels if not ch.get("is_main") and ch.get("channel_type") != "url"]
     if not req_chs:
         await call.message.edit_text(
             "📋 Majburiy obuna kanallar bo'sh.",
@@ -342,11 +341,11 @@ async def cb_ch_list(call: CallbackQuery):
     text += f"\nUlangan kanallar soni: {len(req_chs)} ta"
     await call.message.edit_text(text, reply_markup=back_admin_kb("ch_required"))
 
-# ==================== O'CHIRISH ====================
+# ==================== O'CHIRISH (majburiy obuna — public/private) ====================
 @router.callback_query(F.data == "ch_delete")
 async def cb_ch_delete(call: CallbackQuery):
     channels = await get_channels()
-    req_chs = [ch for ch in channels if not ch.get("is_main")]
+    req_chs = [ch for ch in channels if not ch.get("is_main") and ch.get("channel_type") != "url"]
     if not req_chs:
         await call.answer("❌ Majburiy obuna kanallar yo'q!", show_alert=True)
         return
@@ -359,7 +358,6 @@ async def cb_ch_delete(call: CallbackQuery):
         type_word = "request" if "private" in ch_type else "lock"
         text += f"{i}. {display} | {type_word}\n"
     text += f"\nUlangan kanallar soni: {len(req_chs)} ta"
-    # Inline tugmalar - raqam bilan
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     b = InlineKeyboardBuilder()
     for i, ch in enumerate(req_chs, 1):
@@ -379,7 +377,7 @@ async def cb_ch_del_confirm(call: CallbackQuery):
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     b = InlineKeyboardBuilder()
-    b.button(text="✅ Ha, o'chirish", callback_data=f"ch_del_do:{ch['channel_id']}")
+    b.button(text="✅ Ha, o'chirish", callback_data=f"ch_del_do:{ch_db_id}")
     b.button(text="❌ Yo'q", callback_data="ch_delete")
     b.adjust(2)
     await call.message.edit_text(
@@ -389,8 +387,8 @@ async def cb_ch_del_confirm(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("ch_del_do:"))
 async def cb_ch_del_do(call: CallbackQuery):
-    ch_id = call.data.split(":")[1]
-    await delete_channel(ch_id)
+    ch_db_id = int(call.data.split(":")[1])
+    await delete_channel_by_id(ch_db_id)
     from keyboards.admin_kb import required_channels_kb
     await call.message.edit_text(
         "✅ Kanal o'chirildi!",
@@ -418,19 +416,6 @@ async def cb_url_ch_add(call: CallbackQuery, state: FSMContext):
         reply_markup=back_cancel_admin_kb("ch_url")
     )
 
-@router.message(ChannelStates.waiting_url)
-async def process_ch_url(message: Message, state: FSMContext):
-    url = message.text.strip()
-    if not url.startswith("http"):
-        await message.answer("❌ To'g'ri URL kiriting. (https://...)", reply_markup=cancel_admin_kb())
-        return
-    await add_channel(url, url, url, "url", url)
-    await state.clear()
-    await message.answer(
-        f"✅ Havola qo'shildi!\n🔗 {url}",
-        reply_markup=back_admin_kb("ch_url")
-    )
-
 @router.callback_query(F.data == "url_ch_list")
 async def cb_url_ch_list(call: CallbackQuery):
     """Oddiy havola kanallar ro'yxati"""
@@ -449,16 +434,21 @@ async def cb_url_ch_list(call: CallbackQuery):
     text += f"\nJami: {len(url_chs)} ta havola"
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     b = InlineKeyboardBuilder()
-    for i, ch in enumerate(url_chs, 1):
-        b.button(text=f"🗑 {i}", callback_data=f"url_del_confirm:{ch['id']}")
+    for ch in url_chs:
+        # Use base64-encoded id to avoid URL special chars in callback_data
+        import base64
+        encoded_id = base64.urlsafe_b64encode(str(ch['id']).encode()).decode()
+        b.button(text=f"🗑 {ch.get('channel_username') or ch.get('channel_url') or ch.get('channel_name')}", callback_data=f"url_del_confirm:{encoded_id}")
     b.button(text="🔙 Orqaga", callback_data="ch_url")
-    b.adjust(5)
+    b.adjust(1)
     await call.message.edit_text(text, reply_markup=b.as_markup())
 
 @router.callback_query(F.data.startswith("url_del_confirm:"))
 async def cb_url_del_confirm(call: CallbackQuery):
-    """O'chirish tasdiqlash — id (primar key) orqali o'chiramiz"""
-    ch_db_id = int(call.data.split(":")[1])
+    """O'chirish tasdiqlash — base64 encoded id"""
+    import base64
+    encoded_id = call.data.split(":", 1)[1]
+    ch_db_id = int(base64.urlsafe_b64decode(encoded_id.encode()).decode())
     channels = await get_channels()
     ch = next((c for c in channels if c["id"] == ch_db_id), None)
     if not ch:
@@ -466,7 +456,7 @@ async def cb_url_del_confirm(call: CallbackQuery):
         return
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     b = InlineKeyboardBuilder()
-    b.button(text="✅ Ha, o'chirish", callback_data=f"url_del_do:{ch_db_id}")
+    b.button(text="✅ Ha, o'chirish", callback_data=f"url_del_do:{encoded_id}")
     b.button(text="❌ Yo'q", callback_data="url_ch_list")
     b.adjust(2)
     await call.message.edit_text(
@@ -476,9 +466,10 @@ async def cb_url_del_confirm(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("url_del_do:"))
 async def cb_url_del_do(call: CallbackQuery):
-    """O'chirishni bajarish — id (primar key) orqali"""
-    ch_db_id = int(call.data.split(":")[1])
-    from database.db import delete_channel_by_id
+    """O'chirishni bajarish — base64 encoded id"""
+    import base64
+    encoded_id = call.data.split(":", 1)[1]
+    ch_db_id = int(base64.urlsafe_b64decode(encoded_id.encode()).decode())
     await delete_channel_by_id(ch_db_id)
     await call.message.edit_text(
         "✅ Havola o'chirildi!",
