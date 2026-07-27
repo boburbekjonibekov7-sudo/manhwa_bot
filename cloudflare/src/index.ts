@@ -508,7 +508,7 @@ async function handleMessage(userId: number, text: string | undefined, message: 
     } else if (state.state === 'waiting_genre') {
       data.genre = text;
       await setState(userId, 'waiting_studio', data);
-      await sendMessage(userId, "🎙 Ovoz bergan studiya:\\n\\n/skip - o'tkazib yuborish", skipKb('skip_studio'));
+      await sendMessage(userId, "🎙 Ovoz bergan studiya:\n\n/skip - o'tkazib yuborish", skipKb('skip_studio'));
     } else if (state.state === 'waiting_studio') {
       data.studio = text;
       await setState(userId, 'waiting_poster', data);
