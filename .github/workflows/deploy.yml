@@ -20,7 +20,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'cloudflare'
-          vars: |
-            BOT_TOKEN=${{ secrets.BOT_TOKEN }}
-            ADMIN_IDS=${{ secrets.ADMIN_IDS }}
-            WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}
+        
