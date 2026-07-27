@@ -1,0 +1,26 @@
+name: Deploy Bot to Cloudflare Workers
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'cloudflare/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'cloudflare'
+          vars: |
+            BOT_TOKEN=${{ secrets.BOT_TOKEN }}
+            ADMIN_IDS=${{ secrets.ADMIN_IDS }}
+            WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}
