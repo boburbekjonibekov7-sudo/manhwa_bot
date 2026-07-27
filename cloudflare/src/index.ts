@@ -5,7 +5,7 @@
  */
 
 // ============ CONFIG ============
-const BOT_TOKEN = (typeof __env__ !== 'undefined' && __env__.BOT_TOKEN) || '';
+let BOT_TOKEN = "";
 const ADMIN_IDS = (typeof __env__ !== 'undefined' && __env__.ADMIN_IDS) || '7538793043';
 const WEBHOOK_SECRET = (typeof __env__ !== 'undefined' && __env__.WEBHOOK_SECRET) || 'manhwa_webhook_2025';
 
@@ -563,6 +563,7 @@ async function handleMessage(userId: number, text: string | undefined, message: 
 export default {
   async fetch(request: Request, env: any, ctx: ExecutionContext): Promise<Response> {
     (globalThis as any).__env__ = env;
+    BOT_TOKEN = env.BOT_TOKEN;
     (globalThis as any).DB = env.DB;
     (globalThis as any).STATE = env.STATE;
 
