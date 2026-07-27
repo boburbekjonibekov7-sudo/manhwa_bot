@@ -1,0 +1,17 @@
+name = "manhwa-bot"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# KV Namespaces
+[[kv_namespaces]]
+binding = "DB"
+id = "ce8b256dd59c48e6bb404c6152432b29"
+
+[[kv_namespaces]]
+binding = "STATE"
+id = "6a861878a6a342e29876947bca80db22"
+
+# Environment variables
+[vars]
+WEBHOOK_SECRET = "manhwa_webhook_2025"
+ADMIN_IDS = "7538793043"
