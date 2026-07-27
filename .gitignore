@@ -5,3 +5,4 @@ __pycache__/
 manhwa_bot.db
 .env
 .DS_Store
+cloudflare/.wrangler/
