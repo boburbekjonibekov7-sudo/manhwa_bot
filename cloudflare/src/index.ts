@@ -5,9 +5,9 @@
  */
 
 // ============ CONFIG ============
-let BOT_TOKEN = "";
-const ADMIN_IDS = (typeof __env__ !== 'undefined' && __env__.ADMIN_IDS) || '7538793043';
-const WEBHOOK_SECRET = (typeof __env__ !== 'undefined' && __env__.WEBHOOK_SECRET) || 'manhwa_webhook_2025';
+let BOT_TOKEN = '';
+let ADMIN_IDS = '7538793043';
+let WEBHOOK_SECRET = 'manhwa_webhook_2025';
 
 // ============ TYPES ============
 interface User {
@@ -508,9 +508,12 @@ async function handleMessage(userId: number, message: any): Promise<void> {
 export default {
   async fetch(request: Request, env: any): Promise<Response> {
     (globalThis as any).__env__ = env;
-    BOT_TOKEN = env.BOT_TOKEN;
     (globalThis as any).DB = env.DB;
     (globalThis as any).STATE = env.STATE;
+
+    BOT_TOKEN = env.BOT_TOKEN || '';
+    ADMIN_IDS = env.ADMIN_IDS || '7538793043';
+    WEBHOOK_SECRET = env.WEBHOOK_SECRET || 'manhwa_webhook_2025';
 
     const url = new URL(request.url);
     if (url.pathname === `/webhook/${WEBHOOK_SECRET}` && request.method === 'POST') {
@@ -519,7 +522,10 @@ export default {
         if (update.message) await handleMessage(update.message.from.id, update.message);
         else if (update.callback_query) await handleCallback(update.callback_query.from.id, update.callback_query);
         return new Response('OK');
-      } catch (e) { return new Response('Error', { status: 500 }); }
+      } catch (e) { 
+        console.error(e);
+        return new Response('Error', { status: 500 }); 
+      }
     }
     return new Response('Not Found', { status: 404 });
   }
