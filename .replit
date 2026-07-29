@@ -1,0 +1,9 @@
+run = "python main.py"
+entrypoint = "main.py"
+modules = ["python-3.11:latest"]
+
+[nix]
+channel = "stable-23_11"
+
+[deployment]
+run = ["python", "main.py"]
