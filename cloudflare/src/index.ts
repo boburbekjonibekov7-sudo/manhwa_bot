@@ -390,6 +390,28 @@ async function handleCallback(userId: number, callback: any): Promise<void> {
     const users = (await dbGet('users:list') as number[]) || [];
     const animes = (await dbGet('anime:list') as number[]) || [];
     await sendMessage(userId, `<b>📊 Bot statistikasi:</b>\n\n👤 Foydalanuvchilar: ${users.length}\n🎬 Manhwalar: ${animes.length}`, { inline_keyboard: [[{ text: "🏠 Menyu", callback_data: "main_menu" }]] });
+  } else if (data === 'cabinet') {
+    const user = await getUser(userId);
+    let text = `<b>👤 Shaxsiy kabinet:</b>\n\n`;
+    text += `🆔 ID: <code>${userId}</code>\n`;
+    text += `👤 Ism: ${user?.first_name || 'Noma\'lum'}\n`;
+    text += `💎 VIP: ${user?.is_vip ? '✅' : '❌'}\n`;
+    text += `📅 Ro'yxatdan o'tilgan: ${user?.created_at ? new Date(user.created_at).toLocaleDateString() : 'Noma\'lum'}`;
+    await sendMessage(userId, text, { inline_keyboard: [[{ text: "🏠 Menyu", callback_data: "main_menu" }]] });
+  } else if (data === 'new_animes') {
+    const animes = await getAllAnime();
+    const sorted = animes.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5);
+    if (sorted.length === 0) {
+      await sendMessage(userId, "🆕 Hozircha yangi manhwalar yo'q.", { inline_keyboard: [[{ text: "🏠 Menyu", callback_data: "main_menu" }]] });
+    } else {
+      let text = "<b>🆕 Oxirgi qo'shilgan manhwalar:</b>\n\n";
+      const kb = { inline_keyboard: [] as any };
+      for (const a of sorted) {
+        kb.inline_keyboard.push([{ text: a.name, callback_data: `view:${a.code}` }]);
+      }
+      kb.inline_keyboard.push([{ text: "🏠 Menyu", callback_data: "main_menu" }]);
+      await sendMessage(userId, text, kb);
+    }
   } else if (data === 'admin_panel' && isAdmin) {
     await sendMessage(userId, "<b>🔧 Admin paneli:</b>", adminMenu());
   } else if (data === 'anime_upload' && isAdmin) {
@@ -516,10 +538,15 @@ export default {
     WEBHOOK_SECRET = env.WEBHOOK_SECRET || 'manhwa_webhook_2025';
 
     const url = new URL(request.url);
+    console.log(`Incoming request: ${url.pathname}`);
     if (url.pathname === `/webhook/${WEBHOOK_SECRET}` && request.method === 'POST') {
       try {
         const update = await request.json() as any;
-        if (update.message) await handleMessage(update.message.from.id, update.message);
+        console.log(`Update received: ${JSON.stringify(update)}`);
+        if (update.message) {
+          console.log(`Handling message from ${update.message.from.id}`);
+          await handleMessage(update.message.from.id, update.message);
+        }
         else if (update.callback_query) await handleCallback(update.callback_query.from.id, update.callback_query);
         return new Response('OK');
       } catch (e) { 
